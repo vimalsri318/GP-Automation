@@ -1,0 +1,24 @@
+"""Step 2 Routes"""
+from fastapi import APIRouter
+from fastapi.responses import JSONResponse
+from app.services.step2_service import get_system_files, parse_zrecon, parse_revenue, parse_cost
+
+router = APIRouter(prefix="/api/step2", tags=["Step2"])
+
+@router.get("/files")
+async def list_files():
+    """Returns the list of the 5 system files dynamically"""
+    files = get_system_files()
+    return {"success": True, "files": files}
+
+@router.get("/validate/zrecon")
+async def validate_zrecon_route():
+    return JSONResponse(status_code=200, content=parse_zrecon())
+
+@router.get("/validate/revenue")
+async def validate_revenue_route():
+    return JSONResponse(status_code=200, content=parse_revenue())
+
+@router.get("/validate/cost")
+async def validate_cost_route():
+    return JSONResponse(status_code=200, content=parse_cost())

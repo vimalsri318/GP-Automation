@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: revenue-automation-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=True
+      - API_PORT=8000
+      - DATABASE_URL=sqlite:///./automation_engine.db
+      - API_URL=http://localhost:8000
+      - FRONTEND_URL=http://localhost:3000
+    volumes:
+      - ./backend:/app
+      - ./backend/uploads:/app/uploads
+    command: python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - automation-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Frontend Application
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: revenue-automation-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_APP_NAME=Revenue Automation Engine
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev
+    networks:
+      - automation-network
+    depends_on:
+      backend:
+        condition: service_healthy
+
+networks:
+  automation-network:
+    driver: bridge
