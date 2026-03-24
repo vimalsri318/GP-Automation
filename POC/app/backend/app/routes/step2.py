@@ -1,7 +1,7 @@
 """Step 2 Routes"""
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from app.services.step2_service import get_system_files, parse_zrecon, parse_revenue, parse_cost
+from app.services.step2_service import get_system_files, parse_zrecon, parse_revenue, parse_cost, cross_invoice_integrity
 
 router = APIRouter(prefix="/api/step2", tags=["Step2"])
 
@@ -22,3 +22,7 @@ async def validate_revenue_route():
 @router.get("/validate/cost")
 async def validate_cost_route():
     return JSONResponse(status_code=200, content=parse_cost())
+
+@router.get("/validate/cross_invoice")
+async def validate_cross_invoice_route():
+    return JSONResponse(status_code=200, content=cross_invoice_integrity())
