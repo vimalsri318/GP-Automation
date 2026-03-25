@@ -19,16 +19,21 @@ def get_system_files() -> list:
     
     files = []
     for f in os.listdir(INPUT_DIR):
+        # STRICT FILTER: Ignore lock files (~$), resolved outputs (_Resolved), and non-standard generic files
         if not f.startswith("~$") and "_Resolved" not in f and (f.lower().endswith('.xlsx') or f.lower().endswith('.xls')):
             try:
-                file_path = os.path.join(INPUT_DIR, f)
-                size = os.path.getsize(file_path)
-                files.append({
-                    "name": f,
-                    "size_kb": round(float(size / 1024.0), 1), # type: ignore
-                    "type": "Z Recon" if "Z Recon" in f else "Revenue Dump" if "Revenue" in f else "Cost Dump" if "Cost" in f else "Invoice Listing" if "Invoice" in f else "SO Listing" if "SO" in f else "Other",
-                    "status": "Ready",
-                })
+                card_type = "Z Recon" if "Z Recon" in f else "Revenue Dump" if "Revenue" in f else "Cost Dump" if "Cost" in f else "Invoice Listing" if "Invoice" in f else "SO Listing" if "SO" in f else None
+                
+                # ONLY add to UI if it's one of our known core 5 categories
+                if card_type:
+                    file_path = os.path.join(INPUT_DIR, f)
+                    size = os.path.getsize(file_path)
+                    files.append({
+                        "name": f,
+                        "size_kb": round(float(size / 1024.0), 1), # type: ignore
+                        "type": card_type,
+                        "status": "Ready",
+                    })
             except Exception: pass
     return files
 
