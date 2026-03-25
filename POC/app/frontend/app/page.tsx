@@ -35,6 +35,10 @@ export default function Home() {
   const [loadingStep2, setLoadingStep2] = useState(false);
   const [step2Result, setStep2Result] = useState<any>(null);
   
+  // Step 3 States (CMIR Type Resolution)
+  const [loadingStep3, setLoadingStep3] = useState(false);
+  const [step3Result, setStep3Result] = useState<any>(null);
+  
   const [steps, setSteps] = useState([
     { id: 'zrecon', name: 'Parsing Z-Recon Base File', status: 'idle', error: '' },
     { id: 'revenue', name: 'Parsing Revenue Dump', status: 'idle', error: '' },
@@ -141,6 +145,24 @@ export default function Home() {
       alert("Error executing Step 2. Is the backend running?");
     } finally {
       setLoadingStep2(false);
+    }
+  };
+
+  const handleStep3 = async () => {
+    setLoadingStep3(true);
+    try {
+      const response = await axios.get('http://localhost:8000/api/step3/validate/cmir_resolution');
+      if (response.data.success) {
+        setStep3Result(response.data.data);
+        setActiveProcess(3);
+      } else {
+        alert(response.data.error || "Failed CMIR Resolution");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error executing Step 3. Is the backend running?");
+    } finally {
+      setLoadingStep3(false);
     }
   };
 
@@ -596,15 +618,99 @@ export default function Home() {
                      </div>
                  </div>
 
-                 {/* PROCESS STEP 3 (MOCKED) */}
-                 <div className="border border-slate-200 border-dashed rounded-2xl p-5 bg-slate-50/50 flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4 opacity-70">
-                     <div className="flex shrink-0 items-center justify-center w-10 h-10 rounded-full font-bold font-mono text-lg bg-slate-200 text-slate-500">3</div>
-                     <div className="flex-1">
-                        <h3 className="text-lg font-bold text-slate-600">Final Verification Flow (Locked)</h3>
-                        <p className="text-sm text-slate-500 mt-0.5">Execute the remaining systemic comparisons mapping to final sign-off.</p>
+                 {/* PROCESS STEP 3: CMIR Type Resolution */}
+                 <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden flex flex-col transition-all">
+                     <div 
+                         onClick={() => setActiveProcess(activeProcess === 3 ? null : 3)}
+                         className="p-5 flex flex-col sm:flex-row items-start sm:items-center cursor-pointer hover:bg-slate-50 transition-colors"
+                     >
+                         <div className={`flex shrink-0 items-center justify-center w-10 h-10 rounded-full font-bold font-mono text-lg ${activeProcess === 3 ? 'bg-orange-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                             3
+                         </div>
+                         <div className="flex-1 sm:px-4 mt-3 sm:mt-0">
+                             <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                 CMIR Type Alignment
+                                 {step3Result && <CheckCircle2 className="w-5 h-5 text-orange-500" />}
+                             </h3>
+                             <p className="text-sm text-slate-500 mt-0.5">Resolve blank CMIR types (Column E) via SO Listing waterfall mapping.</p>
+                         </div>
+                         <div className="shrink-0 mt-3 sm:mt-0 flex items-center gap-3">
+                             <button 
+                                 onClick={(e) => { e.stopPropagation(); handleStep3(); }}
+                                 disabled={loadingStep3}
+                                 className="px-5 py-2 bg-black text-white font-semibold text-sm rounded-lg shadow-sm hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
+                             >
+                                 {loadingStep3 ? <><Loader2 className="w-4 h-4 animate-spin"/> Executing...</> : <><Zap className="w-4 h-4"/> Run CMIR Resolution</>}
+                             </button>
+                             {activeProcess === 3 ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                         </div>
                      </div>
-                     <div className="shrink-0">
-                        <button disabled className="px-4 py-1.5 bg-slate-200 text-slate-500 font-semibold text-xs rounded-md shadow-sm opacity-50 cursor-not-allowed">Pending</button>
+
+                     {/* Dropdown Audit Results */}
+                     <div className={`grid transition-[grid-template-rows,opacity] duration-500 ease-in-out ${activeProcess === 3 ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                         <div className="overflow-hidden">
+                             {step3Result && (
+                                 <div className="p-5 bg-orange-50/30 border-t border-slate-100">
+                                     <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                         <Activity className="w-5 h-5 text-orange-500" />
+                                         CMIR Resolution Report
+                                     </h4>
+                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                         <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                             <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Blanks Detected</p>
+                                             <p className="text-2xl font-bold font-mono text-slate-800">{step3Result.total_rows_to_check.toLocaleString()}</p>
+                                             <p className="text-xs text-slate-400 mt-1">Col E Rows Targeted</p>
+                                         </div>
+                                         <div className="bg-orange-500 p-4 border border-orange-600 rounded-xl shadow-md text-white">
+                                             <p className="text-xs text-orange-100 font-semibold mb-1 uppercase">Matches Populated</p>
+                                             <p className="text-2xl font-bold font-mono">{step3Result.updates_applied.toLocaleString()}</p>
+                                             <p className="text-xs text-orange-100 mt-1 opacity-80">Bridged via SO Listing</p>
+                                         </div>
+                                         <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                             <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Resolution Yield</p>
+                                             <p className="text-2xl font-bold font-mono text-slate-800">
+                                                 {step3Result.updates_applied.toLocaleString()} / {step3Result.total_rows_to_check.toLocaleString()}
+                                             </p>
+                                             <p className="text-xs text-slate-400 mt-1">Population Efficiency</p>
+                                         </div>
+                                     </div>
+
+                                     {/* PIPELINE BREAKDOWN */}
+                                     {step3Result.process_steps && (
+                                     <div className="mt-6 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                                         <h5 className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                             <Database className="w-4 h-4 text-orange-500" />
+                                             Execution Timeline & Sub-Steps
+                                         </h5>
+                                         
+                                         <div className="space-y-6">
+                                             {step3Result.process_steps.map((step: any, idx: number) => (
+                                                 <div key={idx} className="relative flex gap-4">
+                                                     {idx !== step3Result.process_steps.length - 1 && (
+                                                         <div className="absolute left-[11px] top-6 w-[2px] h-full bg-slate-100" />
+                                                     )}
+                                                     <div className={`z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${idx === step3Result.process_steps.length - 1 ? 'bg-orange-600 border-orange-200 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                         {idx + 1}
+                                                     </div>
+                                                     <div className="flex-1 pb-2">
+                                                         <p className="text-sm font-bold text-slate-700 leading-none">{step.label}</p>
+                                                         <p className="text-xs text-slate-500 mt-1.5 bg-slate-50 inline-block px-2 py-0.5 rounded border border-slate-100 italic">
+                                                             {step.detail}
+                                                         </p>
+                                                     </div>
+                                                 </div>
+                                             ))}
+                                         </div>
+                                     </div>
+                                     )}
+                                 </div>
+                             )}
+                             {!step3Result && !loadingStep3 && (
+                                 <div className="p-8 text-center text-slate-400 text-sm">
+                                     Execute the CMIR Resolution to view the waterfall mapping results.
+                                 </div>
+                             )}
+                         </div>
                      </div>
                  </div>
               </div>
