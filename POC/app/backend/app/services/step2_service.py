@@ -1,48 +1,16 @@
-# pyre-ignore-all-errors
-"""Step 2 Validation Service"""
 import os
-import pandas as pd
+import pandas as pd  # type: ignore
 from typing import Dict, Any
 from pathlib import Path
-import hashlib
-from config import BASE_DIR
-
-# Hardcode Input Files directory to bypass slow upload processing
-INPUT_DIR = os.path.join(str(BASE_DIR.parent.parent), "Input Files")
-CACHE_DIR = os.path.join(str(BASE_DIR.parent.parent), "Input Files", ".cache")
-
-def read_excel_cached(file_path: str, **kwargs) -> pd.DataFrame:
-    """Read an Excel file, caching it as a highly compressed Parquet file for 100x faster subsequent reads."""
-    if not os.path.exists(CACHE_DIR):
-        os.makedirs(CACHE_DIR, exist_ok=True)
-        
-    mtime = os.path.getmtime(file_path)
-    sheet_name = kwargs.get('sheet_name', 0)
-    
-    # Unique hash tied to the file's last modified time and sheet
-    file_id = f"{file_path}_{mtime}_{sheet_name}".encode('utf-8')
-    hash_str = hashlib.md5(file_id).hexdigest()
-    cache_path = os.path.join(CACHE_DIR, f"{hash_str}.pkl")
-    
-    if os.path.exists(cache_path):
-        try:
-            # 🚀 Read natively from blazing fast python object cache
-            return pd.read_pickle(cache_path)
-        except Exception as e:
-            print(f"Cache miss/corruption for {file_path}, falling back to Excel. Er: {e}")
-            pass
-            
-    # 🐌 Fallback to heavy Excel parsing
-    print(f"Parsing raw Excel into Cache Array: {file_path}")
-    df = pd.read_excel(file_path, **kwargs)
-    
-    # Save the dataframe natively into pickle to skip parsing next time
-    try:
-        df.to_pickle(cache_path)
-    except Exception as e:
-        print(f"Pickle caching engine warning: {e}")
-        
-    return df
+from config import BASE_DIR  # type: ignore
+from app.services.automation_engine import (
+    get_cached_dataframe, 
+    normalize_sap_id, 
+    get_col_from_df,
+    INPUT_DIR,
+    PROJECT_ROOT,
+    CACHE_DIR
+)
 
 def get_system_files() -> list:
     """Returns the list of 5 required files tracked by the system."""
@@ -50,45 +18,72 @@ def get_system_files() -> list:
         return []
     
     files = []
-    # Filter out excel lock files starting with ~$
-    for f in os.listdir(INPUT_DIR):
-        if not f.startswith("~$") and (f.endswith('.XLSX') or f.endswith('.xlsx')):
-            size = os.path.getsize(os.path.join(INPUT_DIR, f))
-            card_type = "Z Recon" if "Z Recon" in f else "Revenue Dump" if "Revenue" in f else "Cost Dump" if "Cost" in f else "Invoice Listing" if "Invoice" in f else "SO Listing" if "SO" in f else "Other"
-            files.append({
-                "name": f,
-                "size_kb": round(float(size / 1024.0), 1),
-                "type": card_type,
-                "status": "Ready",
-            })
+    # Use os.listdir in the project root or Input Files
+    search_dirs = [INPUT_DIR, str(PROJECT_ROOT)]
+    seen_files = set()
+    
+    for d in search_dirs:
+        if not os.path.exists(d): continue
+        for f in os.listdir(d):
+            if f in seen_files: continue
+            if not f.startswith("~$") and (f.lower().endswith('.xlsx') or f.lower().endswith('.xls')):
+                try:
+                    size = os.path.getsize(os.path.join(d, f))
+                    card_type = "Z Recon" if "Z Recon" in f else "Revenue Dump" if "Revenue" in f else "Cost Dump" if "Cost" in f else "Invoice Listing" if "Invoice" in f else "SO Listing" if "SO" in f else "Other"
+                    files.append({
+                        "name": f,
+                        "size_kb": round(float(size / 1024.0), 1), # type: ignore
+                        "type": card_type,
+                        "status": "Ready",
+                    })
+                    seen_files.add(f)
+                except Exception:
+                    pass
     return files
 
 def get_file_by_heuristic(prefix: str):
-    if not os.path.exists(INPUT_DIR):
-        raise Exception(f"Input Files directory not found at {INPUT_DIR}.")
-    files_in_dir = [f for f in os.listdir(INPUT_DIR) if not f.startswith("~$")]
+    """Discovers a file across both Root and Input Files with fallback matching."""
+    search_dirs = [INPUT_DIR, str(PROJECT_ROOT)]
+    files_in_dir = []
+    for d in search_dirs:
+        if os.path.exists(d):
+            files_in_dir.extend([os.path.join(d, f) for f in os.listdir(d) if not f.startswith("~$") and "_Resolved" not in f])
+    
+    # Heuristic Discovery
     if prefix == "Revenue Dump":
-        file = next((f for f in files_in_dir if "Revenue" in f and "dump" in f.lower()), None)
+        file_path = next((f for f in files_in_dir if "revenue" in os.path.basename(f).lower()), None)
+    elif prefix == "Cost":
+        file_path = next((f for f in files_in_dir if "cost" in os.path.basename(f).lower()), None)
     else:
-        file = next((f for f in files_in_dir if prefix in f), None)
-    if not file:
-        raise Exception(f"Missing {prefix} file in Input Files folder.")
-    return os.path.join(INPUT_DIR, file)
+        file_path = next((f for f in files_in_dir if prefix.lower() in os.path.basename(f).lower()), None)
+        
+    if not file_path:
+        raise Exception(f"Missing {prefix} source file.")
+    return file_path
 
 def parse_zrecon() -> Dict[str, Any]:
     try:
         file_path = get_file_by_heuristic("Z Recon")
-        z_df = read_excel_cached(file_path, engine='openpyxl')
+        z_df = get_cached_dataframe(file_path, engine='openpyxl')
         
-        # Filter out the underlying ALV Grand Total row generated by the base system
-        # Valid data rows always have a Company Code
-        if "Company Code" in z_df.columns:
-            z_df = z_df[z_df["Company Code"].notna()]
+        # Valid data rows usually have a Company Code
+        co_col = get_col_from_df(z_df, "company code")
+        if co_col:
+            z_df = z_df[z_df[co_col].notna()]
             
-        z_rev = pd.to_numeric(z_df["Revenue"], errors='coerce').fillna(0).sum() if "Revenue" in z_df.columns else 0.0
-        z_cost = pd.to_numeric(z_df["Cost"], errors='coerce').fillna(0).sum() if "Cost" in z_df.columns else 0.0
+        rev_col = get_col_from_df(z_df, "revenue")
+        cost_col = get_col_from_df(z_df, "cost")
         
-        return {"success": True, "data": {"revenue": round(float(z_rev), 2), "cost": round(float(z_cost), 2)}}
+        z_rev = pd.to_numeric(z_df[rev_col], errors='coerce').fillna(0).sum() if rev_col else 0.0
+        z_cost = pd.to_numeric(z_df[cost_col], errors='coerce').fillna(0).sum() if cost_col else 0.0
+        
+        return {
+            "success": True, 
+            "data": {
+                "revenue": round(float(z_rev), 2),  # type: ignore
+                "cost": round(float(z_cost), 2)  # type: ignore
+            }
+        }
     except Exception as e:
         return {"success": False, "error": f"Failed parsing Z-Recon: {str(e)}"}
 
@@ -109,10 +104,11 @@ def extract_programmatic_pivots(df: pd.DataFrame, source_type: str) -> tuple[flo
         # Cost dump
         contract_col = next((c for c, l in col_str.items() if "cc" == l or "text" in l), None)
         
-    sum_col = next((c for c, l in col_str.items() if "general ledger amount" in l), None)
+    # 3. Use Synonym Mapping to find the math total column
+    sum_col = get_col_from_df(df, "general ledger amount", "revenue", "cost", "value")
     
     if not sum_col:
-        raise Exception(f"Column containing 'General ledger amount' not found in {source_type}.")
+        raise Exception(f"Mathematical sum column not found for {source_type}.")
         
     df[sum_col] = pd.to_numeric(df[sum_col], errors='coerce').fillna(0)
     
@@ -129,13 +125,13 @@ def extract_programmatic_pivots(df: pd.DataFrame, source_type: str) -> tuple[flo
         total_sum = float(grouped.sum())
         
         # Serialize breakdown sorted by absolute magnitude natively
-        breakdown = [{"key": str(k), "amount": round(float(v), 2)} for k, v in grouped.items() if float(v) != 0.0]
-        breakdown.sort(key=lambda x: abs(x["amount"]), reverse=True)
+        breakdown = [{"key": str(k), "amount": round(float(v), 2)} for k, v in grouped.items() if float(v) != 0.0]  # type: ignore
+        breakdown.sort(key=lambda x: abs(float(x["amount"])), reverse=True)
         
         pivot_breakdowns.append({
             "dimension": dimension_name,
-            "total": round(total_sum, 2),
-            "values": breakdown[:100] # Top 100 rows per dimension
+            "total": round(float(total_sum), 2),  # type: ignore
+            "values": breakdown[:100] # type: ignore
         })
         totals.append(total_sum)
 
@@ -158,7 +154,7 @@ def parse_revenue() -> Dict[str, Any]:
     try:
         file_path = get_file_by_heuristic("Revenue Dump")
         # Engine calamine reads huge files 100x faster!
-        r_df = read_excel_cached(file_path, sheet_name=1, header=0, engine='calamine') 
+        r_df = get_cached_dataframe(file_path, sheet_name=1, engine='calamine') 
         
         # Programmatically validate the 3 required Data Pivots: Entity, Deputee, Contract Code
         r_sum, pivot_count, is_consistent, pivots = extract_programmatic_pivots(r_df, "Revenue Dump")
@@ -166,7 +162,7 @@ def parse_revenue() -> Dict[str, Any]:
         return {
             "success": True, 
             "data": {
-                "revenue_sum": round(float(r_sum), 2),
+                "revenue_sum": round(float(r_sum), 2),  # type: ignore
                 "pivot_count": pivot_count,
                 "pivots_consistent": is_consistent,
                 "pivots": pivots
@@ -178,7 +174,7 @@ def parse_revenue() -> Dict[str, Any]:
 def parse_cost() -> Dict[str, Any]:
     try:
         file_path = get_file_by_heuristic("Cost")
-        c_df = read_excel_cached(file_path, sheet_name=1, header=0, engine='calamine')
+        c_df = get_cached_dataframe(file_path, sheet_name=1, engine='calamine')
         
         # Programmatically validate the 3 required Data Pivots
         c_sum, pivot_count, is_consistent, pivots = extract_programmatic_pivots(c_df, "Cost Dump")
@@ -186,7 +182,7 @@ def parse_cost() -> Dict[str, Any]:
         return {
             "success": True, 
             "data": {
-                "cost_sum": round(float(c_sum), 2),
+                "cost_sum": round(float(c_sum), 2),  # type: ignore
                 "pivot_count": pivot_count,
                 "pivots_consistent": is_consistent,
                 "pivots": pivots
@@ -203,15 +199,15 @@ def cross_invoice_integrity() -> Dict[str, Any]:
     try:
         # Load Z Recon aggressively compressed base
         z_path = get_file_by_heuristic("Z Recon")
-        z_df = read_excel_cached(z_path, engine='openpyxl')
+        z_df = get_cached_dataframe(z_path, engine='openpyxl')
         
         # Load Revenue Dump Cache
         r_path = get_file_by_heuristic("Revenue Dump")
-        r_df = read_excel_cached(r_path, sheet_name=1, header=0, engine='calamine')
+        r_df = get_cached_dataframe(r_path, sheet_name=1, engine='calamine')
         
         # Load Invoice Listing Cache
         i_path = get_file_by_heuristic("Invoice")
-        i_df = read_excel_cached(i_path, engine='openpyxl') 
+        i_df = get_cached_dataframe(i_path, engine='openpyxl') 
         
         print(f"DEBUG: Revenue Cols = {list(r_df.columns)}")
         print(f"DEBUG: Invoice Cols = {list(i_df.columns)}")
@@ -272,9 +268,9 @@ def cross_invoice_integrity() -> Dict[str, Any]:
                 inv_map[str(row[i_inv_col])] = so_val
             
             with open("sap_bridge.log", "w") as f:
-                f.write(f"DEBUG: rev_map keys (first 5) = {list(rev_map.keys())[:5]}\n")
-                f.write(f"DEBUG: rev_map values (first 5) = {list(rev_map.values())[:5]}\n")
-                f.write(f"DEBUG: inv_map keys (first 5) = {list(inv_map.keys())[:5]}\n")
+                f.write(f"DEBUG: rev_map keys (first 5) = {list(rev_map.keys())[:5]}\n")  # type: ignore
+                f.write(f"DEBUG: rev_map values (first 5) = {list(rev_map.values())[:5]}\n")  # type: ignore
+                f.write(f"DEBUG: inv_map keys (first 5) = {list(inv_map.keys())[:5]}\n")  # type: ignore
                 f.write(f"DEBUG: Current col mapping: R_REF={r_ref_col}, I_INV={i_inv_col}, I_SO1={i_so1_col}\n")
                 
         # 3. Update Z-Recon Native DataFrame
@@ -312,7 +308,7 @@ def cross_invoice_integrity() -> Dict[str, Any]:
                         metrics["missing_so_candidates"] += 1
                         
                         # Lookup 1: Get raw Invoice reference from Revenue memory matrix
-                        invoice_str = str(rev_map.get(acc_doc_norm, '')).strip().replace('.0', '').lstrip('0')
+                        invoice_str = str(rev_map.get(acc_doc_norm, '')).strip().replace('.0', '').lstrip('0')  # type: ignore
                         
                         if invoice_str and invoice_str != 'nan':
                             metrics["found_in_revenue"] += 1

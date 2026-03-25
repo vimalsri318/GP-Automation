@@ -1,5 +1,5 @@
 import os
-import pandas as pd
+import pandas as pd  # type: ignore
 from pathlib import Path
 
 # Absolute paths
@@ -57,9 +57,9 @@ def verify_step2_bridge():
             inv_map[key] = str(row[i_so1_col]).strip().replace('.0', '')
 
     # Step C: Execution on Z-Recon sample
-    matches = 0
-    skips_starts_1 = 0
-    missing_so_count = 0
+    matches: int = 0
+    skips_starts_1: int = 0
+    missing_so_count: int = 0
     
     for _, row in z_df.iterrows():
         acc_doc_raw = str(row[z_acc_col]).strip().replace('.0', '')
