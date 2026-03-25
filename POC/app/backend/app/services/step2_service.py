@@ -19,12 +19,9 @@ def get_system_files() -> list:
     
     files = []
     for f in os.listdir(INPUT_DIR):
-        # STRICT FILTER: Ignore lock files (~$), resolved outputs (_Resolved), and non-standard generic files
         if not f.startswith("~$") and "_Resolved" not in f and (f.lower().endswith('.xlsx') or f.lower().endswith('.xls')):
             try:
                 card_type = "Z Recon" if "Z Recon" in f else "Revenue Dump" if "Revenue" in f else "Cost Dump" if "Cost" in f else "Invoice Listing" if "Invoice" in f else "SO Listing" if "SO" in f else None
-                
-                # ONLY add to UI if it's one of our known core 5 categories
                 if card_type:
                     file_path = os.path.join(INPUT_DIR, f)
                     size = os.path.getsize(file_path)
@@ -115,13 +112,12 @@ def parse_cost() -> Dict[str, Any]:
     except Exception as e: return {"success": False, "error": str(e)}
 
 def cross_invoice_integrity() -> Dict[str, Any]:
-    """Step 2: Cross Invoice Integrity (OPTIMIZED PRECISION)"""
+    """Step 2: Cross Invoice Integrity (VISUAL AUDIT EMPOWERED)"""
     try:
         z_path = get_file_by_heuristic("Z Recon")
         r_path = get_file_by_heuristic("Revenue Dump")
         i_path = get_file_by_heuristic("Invoice")
         
-        # Turbo Read
         z_df = get_cached_dataframe(z_path, engine='calamine')
         r_df = get_cached_dataframe(r_path, sheet_name=1, engine='calamine')
         if r_df.empty or len(r_df.columns) < 5: r_df = get_cached_dataframe(r_path, sheet_name=0, engine='calamine')
@@ -137,7 +133,7 @@ def cross_invoice_integrity() -> Dict[str, Any]:
             return None
 
         z_acc_col = get_col_strict(z_df, "accounting document")
-        z_so_col = get_col_strict(z_df, "so number", "sales order") or "SO Number"
+        z_so_col = get_col_strict(z_df, "so no.", "so no", "so number", "sales order") or "SO Number"
         r_doc_col = get_col_strict(r_df, "document number", "doc. number", "accounting document")
         r_ref_col = get_col_strict(r_df, "reference key", "reference key 3", "invoice")
         i_inv_col = get_col_strict(i_df, "invoice no", "invoice", "billing document")
@@ -147,7 +143,7 @@ def cross_invoice_integrity() -> Dict[str, Any]:
         if not all([z_acc_col, r_doc_col, r_ref_col, i_inv_col]):
             return {"success": False, "error": "Schema mismatch. Column AC or B/C missing."}
 
-        # 1. Target Vectorized Identification
+        # 1. identification
         if z_so_col not in z_df.columns: z_df[z_so_col] = None
         is_blank = z_df[z_so_col].isna() | (z_df[z_so_col].astype(str).str.strip().isin(['', 'nan']))
         
@@ -155,7 +151,7 @@ def cross_invoice_integrity() -> Dict[str, Any]:
         mask_target = acc_vec.str.isdigit() & (~acc_vec.str.startswith('1'))
         target_indices = z_df[is_blank & mask_target].index
 
-        # 2. Build High-Speed Hash Maps
+        # 2. Maps
         r_sub = r_df[[r_doc_col, r_ref_col]].dropna().copy()
         r_sub[r_doc_col] = r_sub[r_doc_col].astype(str).str.strip().str.replace('.0','',regex=False).str.lstrip('0')
         rev_map = r_sub.set_index(r_doc_col)[r_ref_col].to_dict()
@@ -167,22 +163,51 @@ def cross_invoice_integrity() -> Dict[str, Any]:
         else: return {"success": False, "error": "No SO column in Invoice."}
         inv_map = i_sub.set_index(i_inv_col)['FINAL_SO'].to_dict()
 
-        # 3. Parallel Resolve
+        # 3. Resolve
         search_ids = acc_vec.loc[target_indices]
-        # Bridge: Z -> Revenue -> Invoice -> SO
         resolved_refs = search_ids.map(rev_map).astype(str).str.strip().str.replace('.0','',regex=False).str.lstrip('0')
         final_sos = resolved_refs.map(inv_map)
         
+        # Capture indices of success for highlighting
+        success_indices = final_sos.dropna().index
         z_df.loc[target_indices, z_so_col] = final_sos.values
-        z_df.to_pickle(os.path.join(CACHE_DIR, "Z_Recon_Step2.pkl"))
         
-        def save_audit(df, root):
-            try: df.to_excel(os.path.join(str(root), "Z_Recon_Step2_Resolved.xlsx"), index=False)
-            except: pass
-        import threading
-        threading.Thread(target=save_audit, args=(z_df.copy(), PROJECT_ROOT), daemon=True).start()
+        # 4. Save with Highlight Audit Logic
+        def save_highlighted_audit(df, root, updated_indices, so_col_name):
+            try:
+                out_path = os.path.join(str(root), "Z_Recon_Step2_Resolved.xlsx")
+                # Identify column index (0-indexed)
+                col_idx = df.columns.get_loc(so_col_name)
+                
+                # Standard write
+                writer = pd.ExcelWriter(out_path, engine='openpyxl')
+                df.to_excel(writer, index=False, sheet_name='Resolved')
+                
+                # Apply Highlights
+                from openpyxl.styles import PatternFill
+                worksheet = writer.sheets['Resolved']
+                yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
+                
+                # Rows in Excel are 1-indexed, +1 for header
+                # Pandas indices are original, we need position in current df
+                # Since we reset nothing, we can use get_loc or just iterate
+                for idx in updated_indices:
+                    # Find relative row position (0-based)
+                    row_pos = df.index.get_loc(idx)
+                    # Excel row = row_pos + 2 (1 for header, 1 for 1-indexing)
+                    # Excel col = col_idx + 1 (1 for 1-indexing)
+                    worksheet.cell(row=row_pos + 2, column=col_idx + 1).fill = yellow_fill
+                
+                writer.close()
+                print(f"✅ Visual Audit Save Complete: {out_path}")
+            except Exception as e:
+                print(f"⚠️ Failed Visual Audit Save: {e}")
 
-        updates = int(final_sos.dropna().count())
+        import threading
+        threading.Thread(target=save_highlighted_audit, args=(z_df.copy(), PROJECT_ROOT, success_indices, z_so_col), daemon=True).start()
+        z_df.to_pickle(os.path.join(CACHE_DIR, "Z_Recon_Step2.pkl"))
+
+        updates = int(len(success_indices))
         return {
             "success": True, 
             "data": {
@@ -190,12 +215,9 @@ def cross_invoice_integrity() -> Dict[str, Any]:
                 "unresolved_misses": int(len(target_indices) - updates),
                 "total_rows": len(z_df),
                 "process_steps": [
-                    {"label": "Source Discovery", "detail": f"Ingested {len(z_df)} rows via Turbo engine."},
-                    {"label": "Target ID", "detail": f"Found {len(target_indices)} blank candidates (No manual 1 docs)."},
-                    {"label": "Revenue-to-Doc Map", "detail": f"Indexed {len(rev_map)} mappings from Column AC."},
-                    {"label": "Invoice Waterfall Map", "detail": f"Built resolution map with {len(inv_map)} SO targets."},
-                    {"label": "Bridge Execution", "detail": f"Vectorized resolve found {updates} successful matches."},
-                    {"label": "Audit Generation", "detail": "Exporting 'Z_Recon_Step2_Resolved.xlsx' in background."}
+                    {"label": "Direct Injection", "detail": f"Populated {updates} SOs into original Column: {z_so_col}."},
+                    {"label": "Smart Highlighter", "detail": f"Applied Yellow fill to {updates} newly resolved cells."},
+                    {"label": "Audit Generation", "detail": "Exporting 'Z_Recon_Step2_Resolved.xlsx' for manual review."}
                 ]
             }
         }
