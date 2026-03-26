@@ -1,7 +1,7 @@
 """FastAPI Main App"""
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import step1, step2, step3
+from app.routes import step1, step2, step3, step4
 from config import FRONTEND_URL, DEBUG
 
 app = FastAPI(title="Revenue POC")
@@ -19,6 +19,7 @@ app.add_middleware(
 app.include_router(step1.router)
 app.include_router(step2.router)
 app.include_router(step3.router)
+app.include_router(step4.router)
 
 @app.get("/health")
 async def health():

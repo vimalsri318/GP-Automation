@@ -119,24 +119,29 @@ def resolve_cmir_types() -> Dict[str, Any]:
             except Exception as e:
                 print(f"⚠️ Failed Step 3 Visual Audit: {e}")
 
-        import threading
-        threading.Thread(target=save_orange_highlight_audit, args=(z_df.copy(), PROJECT_ROOT, success_indices, z_cmir_col), daemon=True).start()
+        # EXECUTE VIA PIPELINE QUEUE (Serialized to avoid file locks)
+        from app.services.automation_engine import get_audit_manager
+        get_audit_manager().submit(
+            save_orange_highlight_audit, 
+            z_df.copy(), PROJECT_ROOT, success_indices, z_cmir_col
+        )
+        
+        # SAVE CHECKPOINT FOR STEP 4
+        z_df.to_pickle(os.path.join(CACHE_DIR, "Z_Recon_Step3.pkl"))
         
         updates = int(len(success_indices))
         return {
             "success": True, 
-            "data": {
-                "updates_applied": updates,
-                "unresolved_misses": int(len(target_indices) - updates),
-                "total_rows_to_check": len(target_indices),
-                "process_steps": [
-                    {"label": "Gap Analysis", "detail": f"Found {len(target_indices)} blank fields in Column E (CMIR Type)."},
-                    {"label": "Master Source Sync", "detail": f"Warmed up {len(so_df)} entries from SO Listing workbook."},
-                    {"label": "Waterfall Bridging", "detail": f"Built a resolution map with {len(res_map)} Transaction types."},
-                    {"label": "Transaction Type Injection", "detail": f"Successfully mapped {updates} records across files."},
-                    {"label": "Self-Audit Logic", "detail": "Applying Orange cell-fills to Column E in audit Excel."}
-                ]
-            }
+            "updates_applied": updates,
+            "unresolved_misses": int(len(target_indices) - updates),
+            "total_rows_to_check": len(target_indices),
+            "process_steps": [
+                {"label": "Gap Analysis", "detail": f"Found {len(target_indices)} blank fields in Column E (CMIR Type)."},
+                {"label": "Master Source Sync", "detail": f"Warmed up {len(so_df)} entries from SO Listing workbook."},
+                {"label": "Waterfall Bridging", "detail": f"Built a resolution map with {len(res_map)} Transaction types."},
+                {"label": "Transaction Type Injection", "detail": f"Successfully mapped {updates} records across files."},
+                {"label": "Self-Audit Logic", "detail": "Applying Orange cell-fills to Column E in audit Excel."}
+            ]
         }
     except Exception as e:
         return {"success": False, "error": str(e)}

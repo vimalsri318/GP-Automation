@@ -35,9 +35,14 @@ export default function Home() {
   const [loadingStep2, setLoadingStep2] = useState(false);
   const [step2Result, setStep2Result] = useState<any>(null);
   
+  //step 6 has same residua; to manage
   // Step 3 States (CMIR Type Resolution)
   const [loadingStep3, setLoadingStep3] = useState(false);
   const [step3Result, setStep3Result] = useState<any>(null);
+  
+  // Step 4 States (Invoice & Narration Sync)
+  const [loadingStep4, setLoadingStep4] = useState(false);
+  const [step4Result, setStep4Result] = useState<any>(null);
   
   const [steps, setSteps] = useState([
     { id: 'zrecon', name: 'Parsing Z-Recon Base File', status: 'idle', error: '' },
@@ -72,25 +77,19 @@ export default function Home() {
     ]);
 
     try {
-      // Step 1: Z-Recon
-      setSteps(s => s.map(st => st.id === 'zrecon' ? {...st, status: 'running'} : st));
-      const zRes = await axios.get('http://localhost:8000/api/step2/validate/zrecon');
-      if (!zRes.data.success) throw new Error(zRes.data.error || 'Z-Recon failure');
-      setSteps(s => s.map(st => st.id === 'zrecon' ? {...st, status: 'done'} : st));
+      // UNIFIED EAGER WARMUP (Step 1-3 Parsed Parallelly in the Background + SO & Invoice Listing)
+      setSteps(s => s.map(st => ({...st, status: 'running'})));
+      const eagerRes = await axios.get('http://localhost:8000/api/step2/validate/eager_all');
+      if (!eagerRes.data.success) throw new Error(eagerRes.data.error || 'Eager Warmup failure');
+      
+      const allData = eagerRes.data.data;
+      const zRes = { data: allData.zrecon };
+      const rRes = { data: allData.revenue };
+      const cRes = { data: allData.cost };
 
-      // Step 2: Revenue
-      setSteps(s => s.map(st => st.id === 'revenue' ? {...st, status: 'running'} : st));
-      const rRes = await axios.get('http://localhost:8000/api/step2/validate/revenue');
-      if (!rRes.data.success) throw new Error(rRes.data.error || 'Revenue Dump failure');
-      setSteps(s => s.map(st => st.id === 'revenue' ? {...st, status: 'done'} : st));
+      setSteps(s => s.map(st => ({...st, status: 'done'})));
 
-      // Step 3: Cost
-      setSteps(s => s.map(st => st.id === 'cost' ? {...st, status: 'running'} : st));
-      const cRes = await axios.get('http://localhost:8000/api/step2/validate/cost');
-      if (!cRes.data.success) throw new Error(cRes.data.error || 'Cost Dump failure');
-      setSteps(s => s.map(st => st.id === 'cost' ? {...st, status: 'done'} : st));
-
-      // Aggregate Results locally since the orchestrator successfully got all pieces
+      // Aggregate Results locally
       const z_rev = zRes.data.data.revenue;
       const z_cost = zRes.data.data.cost;
       const r_sum = rRes.data.data.revenue_sum;
@@ -135,7 +134,7 @@ export default function Home() {
     try {
       const response = await axios.get('http://localhost:8000/api/step2/validate/cross_invoice');
       if (response.data.success) {
-        setStep2Result(response.data.data);
+        setStep2Result(response.data);
         setActiveProcess(2);
       } else {
         alert(response.data.error || "Failed Cross-Invoice Integrity check");
@@ -153,7 +152,7 @@ export default function Home() {
     try {
       const response = await axios.get('http://localhost:8000/api/step3/validate/cmir_resolution');
       if (response.data.success) {
-        setStep3Result(response.data.data);
+        setStep3Result(response.data);
         setActiveProcess(3);
       } else {
         alert(response.data.error || "Failed CMIR Resolution");
@@ -163,6 +162,24 @@ export default function Home() {
       alert("Error executing Step 3. Is the backend running?");
     } finally {
       setLoadingStep3(false);
+    }
+  };
+
+  const handleStep4 = async () => {
+    setLoadingStep4(true);
+    try {
+      const response = await axios.get('http://localhost:8000/api/step4/validate/master_sync');
+      if (response.data.success) {
+        setStep4Result(response.data);
+        setActiveProcess(4);
+      } else {
+        alert(response.data.error || "Failed Master Sync");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error executing Step 4. Is the backend running?");
+    } finally {
+      setLoadingStep4(false);
     }
   };
 
@@ -549,17 +566,17 @@ export default function Home() {
                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Total Baseline Scope</p>
-                                             <p className="text-2xl font-bold font-mono text-slate-800">{step2Result.total_rows.toLocaleString()}</p>
+                                             <p className="text-2xl font-bold font-mono text-slate-800">{step2Result.total_rows_to_check?.toLocaleString()}</p>
                                              <p className="text-xs text-slate-400 mt-1">Z-Recon Rows Traversed</p>
                                          </div>
                                          <div className="bg-green-50 p-4 border border-green-200 rounded-xl shadow-sm">
                                              <p className="text-xs text-green-600 font-semibold mb-1 uppercase">SO Matches Resolved</p>
-                                             <p className="text-2xl font-bold font-mono text-green-700">{step2Result.updates_applied.toLocaleString()}</p>
+                                             <p className="text-2xl font-bold font-mono text-green-700">{step2Result.updates_applied?.toLocaleString()}</p>
                                              <p className="text-xs text-green-600 mt-1 opacity-80">Populated via Cross-Link</p>
                                          </div>
                                          <div className="bg-amber-50 p-4 border border-amber-200 rounded-xl shadow-sm">
                                              <p className="text-xs text-amber-600 font-semibold mb-1 uppercase">Failed Mappings</p>
-                                             <p className="text-2xl font-bold font-mono text-amber-700">{step2Result.unresolved_misses.toLocaleString()}</p>
+                                             <p className="text-2xl font-bold font-mono text-amber-700">{step2Result.unresolved_misses?.toLocaleString()}</p>
                                              <p className="text-xs text-amber-600 mt-1 opacity-80">Reference Key / SO Missing</p>
                                          </div>
                                      </div>
@@ -658,18 +675,18 @@ export default function Home() {
                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Blanks Detected</p>
-                                             <p className="text-2xl font-bold font-mono text-slate-800">{step3Result.total_rows_to_check.toLocaleString()}</p>
+                                             <p className="text-2xl font-bold font-mono text-slate-800">{step3Result.total_rows_to_check?.toLocaleString()}</p>
                                              <p className="text-xs text-slate-400 mt-1">Col E Rows Targeted</p>
                                          </div>
                                          <div className="bg-orange-500 p-4 border border-orange-600 rounded-xl shadow-md text-white">
                                              <p className="text-xs text-orange-100 font-semibold mb-1 uppercase">Matches Populated</p>
-                                             <p className="text-2xl font-bold font-mono">{step3Result.updates_applied.toLocaleString()}</p>
+                                             <p className="text-2xl font-bold font-mono">{step3Result.updates_applied?.toLocaleString()}</p>
                                              <p className="text-xs text-orange-100 mt-1 opacity-80">Bridged via SO Listing</p>
                                          </div>
                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Resolution Yield</p>
                                              <p className="text-2xl font-bold font-mono text-slate-800">
-                                                 {step3Result.updates_applied.toLocaleString()} / {step3Result.total_rows_to_check.toLocaleString()}
+                                                 {step3Result.updates_applied?.toLocaleString()} / {step3Result.total_rows_to_check?.toLocaleString()}
                                              </p>
                                              <p className="text-xs text-slate-400 mt-1">Population Efficiency</p>
                                          </div>
@@ -713,28 +730,102 @@ export default function Home() {
                          </div>
                      </div>
                  </div>
+
+                  {/* STEP 4: INVOICE & NARRATION SYNC */}
+                  <div className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 mb-4 overflow-hidden">
+                      <div className="px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer" onClick={() => setActiveProcess(activeProcess === 4 ? 0 : 4)}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold font-mono text-lg ${activeProcess === 4 ? 'bg-black text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              4
+                          </div>
+                          <div className="flex-1 sm:px-4 mt-3 sm:mt-0">
+                              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                  Invoice & Narration Sync
+                                  {step4Result && <CheckCircle2 className="w-5 h-5 text-emerald-500" />}
+                              </h3>
+                              <p className="text-sm text-slate-500 mt-0.5">Recover missing invoice data via SO Listing master bridge.</p>
+                          </div>
+                          <div className="shrink-0 mt-3 sm:mt-0 flex items-center gap-3">
+                              <button 
+                                  onClick={(e) => { e.stopPropagation(); handleStep4(); }}
+                                  disabled={loadingStep4}
+                                  className="px-5 py-2 bg-black text-white font-semibold text-sm rounded-lg shadow-sm hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
+                              >
+                                  {loadingStep4 ? <><Loader2 className="w-4 h-4 animate-spin"/> Executing...</> : <><Zap className="w-4 h-4"/> Run Master Sync</>}
+                              </button>
+                              {activeProcess === 4 ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                          </div>
+                      </div>
+
+                      {/* Dropdown Audit Results */}
+                      <div className={`grid transition-[grid-template-rows,opacity] duration-500 ease-in-out ${activeProcess === 4 ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                          <div className="overflow-hidden">
+                              {step4Result && (
+                                  <div className="p-5 bg-emerald-50/30 border-t border-slate-100">
+                                      <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                          <Activity className="w-5 h-5 text-emerald-500" />
+                                          Master Sync Report
+                                      </h4>
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Target Records</p>
+                                              <p className="text-2xl font-bold font-mono text-slate-800">{step4Result.total_rows_to_check?.toLocaleString()}</p>
+                                          </div>
+                                          <div className="bg-emerald-600 p-4 border border-emerald-700 rounded-xl shadow-md text-white">
+                                              <p className="text-xs text-emerald-100 font-semibold mb-1 uppercase">Synced Successfully</p>
+                                              <p className="text-2xl font-bold font-mono text-white">{step4Result.updates_applied?.toLocaleString()}</p>
+                                          </div>
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Resolution Yield</p>
+                                              <p className="text-2xl font-bold font-mono text-slate-800">{((step4Result.updates_applied || 0) / (step4Result.total_rows_to_check || 1) * 100).toFixed(1)}%</p>
+                                          </div>
+                                      </div>
+
+                                      {/* PIPELINE BREAKDOWN */}
+                                      {step4Result.process_steps && (
+                                      <div className="mt-6 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                                          <h5 className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                              <Database className="w-4 h-4 text-emerald-500" />
+                                              Execution Timeline & Sub-Steps
+                                          </h5>
+                                          
+                                          <div className="space-y-6">
+                                              {step4Result.process_steps.map((step: any, idx: number) => (
+                                                  <div key={idx} className="relative flex gap-4">
+                                                      {idx !== step4Result.process_steps.length - 1 && (
+                                                          <div className="absolute left-[11px] top-6 w-[2px] h-full bg-slate-100" />
+                                                      )}
+                                                      <div className={`z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${idx === step4Result.process_steps.length - 1 ? 'bg-emerald-600 border-emerald-200 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                          {idx + 1}
+                                                      </div>
+                                                      <div className="flex-1 pb-2">
+                                                          <p className="text-sm font-bold text-slate-700 leading-none">{step.label}</p>
+                                                          <p className="text-xs text-slate-500 mt-1.5 italic">{step.detail}</p>
+                                                      </div>
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </div>
+                                      )}
+                                  </div>
+                              )}
+                              {!step4Result && !loadingStep4 && (
+                                  <div className="p-8 text-center text-slate-400 text-sm">
+                                      Execute the Master Sync to recover Invoice and Narration data.
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      </main>
-      
-      {/* ADD GLOBAL SCROLLBAR CSS */}
+            )}
+          </div>
+        </main>
+
       <style dangerouslySetInnerHTML={{__html: `
-         .custom-scrollbar::-webkit-scrollbar {
-             width: 6px;
-         }
-         .custom-scrollbar::-webkit-scrollbar-track {
-             background: #f8fafc; 
-             border-radius: 4px;
-         }
-         .custom-scrollbar::-webkit-scrollbar-thumb {
-             background: #cbd5e1; 
-             border-radius: 4px;
-         }
-         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-             background: #94a3b8; 
-         }
+         .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+         .custom-scrollbar::-webkit-scrollbar-track { background: #f8fafc; border-radius: 4px; }
+         .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
       `}} />
     </div>
   );

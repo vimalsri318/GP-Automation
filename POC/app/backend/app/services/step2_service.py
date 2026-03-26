@@ -53,6 +53,16 @@ def get_file_by_heuristic(prefix: str):
         raise Exception(f"Missing {prefix} source file.")
     return file_path
 
+def get_col_strict(df, *keywords):
+    """Enforce strict or partial column matching across variants."""
+    for kw in keywords:
+        for c in df.columns:
+            if kw.lower() == str(c).lower().strip(): return c
+    for kw in keywords:
+        for c in df.columns:
+            if kw.lower() in str(c).lower(): return c
+    return None
+
 def parse_zrecon() -> Dict[str, Any]:
     try:
         file_path = get_file_by_heuristic("Z Recon")
@@ -123,15 +133,6 @@ def cross_invoice_integrity() -> Dict[str, Any]:
         if r_df.empty or len(r_df.columns) < 5: r_df = get_cached_dataframe(r_path, sheet_name=0, engine='calamine')
         i_df = get_cached_dataframe(i_path, engine='calamine')
 
-        def get_col_strict(df, *keywords):
-            for kw in keywords:
-                for c in df.columns:
-                    if kw.lower() == str(c).lower().strip(): return c
-            for kw in keywords:
-                for c in df.columns:
-                    if kw.lower() in str(c).lower(): return c
-            return None
-
         z_acc_col = get_col_strict(z_df, "accounting document")
         z_so_col = get_col_strict(z_df, "so no.", "so no", "so number", "sales order") or "SO Number"
         r_doc_col = get_col_strict(r_df, "document number", "doc. number", "accounting document")
@@ -174,51 +175,108 @@ def cross_invoice_integrity() -> Dict[str, Any]:
         
         # 4. Save with Highlight Audit Logic
         def save_highlighted_audit(df, root, updated_indices, so_col_name):
+            import time
+            t0 = time.perf_counter()
             try:
-                out_path = os.path.join(str(root), "Z_Recon_Step2_Resolved.xlsx")
-                # Identify column index (0-indexed)
-                col_idx = df.columns.get_loc(so_col_name)
-                
-                # Standard write
-                writer = pd.ExcelWriter(out_path, engine='openpyxl')
-                df.to_excel(writer, index=False, sheet_name='Resolved')
-                
-                # Apply Highlights
+                import shutil
+                from openpyxl import load_workbook
                 from openpyxl.styles import PatternFill
-                worksheet = writer.sheets['Resolved']
+                
+                t_prep = time.perf_counter()
+                # Source base file (Preserve original for audit)
+                src_path = get_file_by_heuristic("Z Recon")
+                out_path = os.path.join(str(root), "Z_Recon_Step2_Resolved.xlsx")
+                
+                # 4.1 Copy File
+                shutil.copy2(src_path, out_path)
+                t_copy = time.perf_counter()
+                print(f"⏱️ [PERF] Audit: File Copied | Time: {int((t_copy - t_prep) * 1000)}ms")
+                
+                # 4.2 Load Workbook (THE WEIGHT)
+                wb = load_workbook(out_path)
+                ws = wb.active
+                t_load = time.perf_counter()
+                print(f"⏱️ [PERF] Audit: Workbook Loaded | Time: {int((t_load - t_copy) * 1000)}ms")
+                
+                # Identify column index
+                headers = [str(cell.value).lower().strip() for cell in ws[1]]
+                try:
+                    col_idx = headers.index(so_col_name.lower().strip())
+                except ValueError:
+                    col_idx = df.columns.get_loc(so_col_name)
+
                 yellow_fill = PatternFill(start_color='FFFF00', end_color='FFFF00', fill_type='solid')
                 
-                # Rows in Excel are 1-indexed, +1 for header
-                # Pandas indices are original, we need position in current df
-                # Since we reset nothing, we can use get_loc or just iterate
+                # 4.3 Update Loop
+                t_loop_start = time.perf_counter()
                 for idx in updated_indices:
-                    # Find relative row position (0-based)
                     row_pos = df.index.get_loc(idx)
-                    # Excel row = row_pos + 2 (1 for header, 1 for 1-indexing)
-                    # Excel col = col_idx + 1 (1 for 1-indexing)
-                    worksheet.cell(row=row_pos + 2, column=col_idx + 1).fill = yellow_fill
+                    val = df.at[idx, so_col_name]
+                    target_cell = ws.cell(row=row_pos + 2, column=col_idx + 1)
+                    target_cell.value = val
+                    target_cell.fill = yellow_fill
+                t_loop_end = time.perf_counter()
+                print(f"⏱️ [PERF] Audit: Highlight Loop | Time: {int((t_loop_end - t_loop_start) * 1000)}ms ({len(updated_indices)} rows)")
                 
-                writer.close()
-                print(f"✅ Visual Audit Save Complete: {out_path}")
+                wb.save(out_path)
+                t_final = time.perf_counter()
+                print(f"🚀 [PERF] Audit: Total Save Complete | Time: {int((t_final - t0) * 1000)}ms")
             except Exception as e:
-                print(f"⚠️ Failed Visual Audit Save: {e}")
+                print(f"⚠️ Optimized Audit Save Failed: {e}")
 
-        import threading
-        threading.Thread(target=save_highlighted_audit, args=(z_df.copy(), PROJECT_ROOT, success_indices, z_so_col), daemon=True).start()
+        # EXECUTE VIA PIPELINE QUEUE (Prevents File Locks across Steps)
+        from app.services.automation_engine import get_audit_manager
+        get_audit_manager().submit(
+            save_highlighted_audit, 
+            z_df.copy(), PROJECT_ROOT, success_indices, z_so_col
+        )
+
+        # Step 2 Checkpoint
         z_df.to_pickle(os.path.join(CACHE_DIR, "Z_Recon_Step2.pkl"))
 
         updates = int(len(success_indices))
         return {
             "success": True, 
-            "data": {
-                "updates_applied": updates,
-                "unresolved_misses": int(len(target_indices) - updates),
-                "total_rows": len(z_df),
-                "process_steps": [
-                    {"label": "Direct Injection", "detail": f"Populated {updates} SOs into original Column: {z_so_col}."},
-                    {"label": "Smart Highlighter", "detail": f"Applied Yellow fill to {updates} newly resolved cells."},
-                    {"label": "Audit Generation", "detail": "Exporting 'Z_Recon_Step2_Resolved.xlsx' for manual review."}
-                ]
-            }
+            "updates_applied": updates,
+            "unresolved_misses": int(len(target_indices) - updates),
+            "total_rows_to_check": len(z_df),
+            "process_steps": [
+                {"label": "Direct Injection", "detail": f"Populated {updates} SOs into original Column: {z_so_col}."},
+                {"label": "Smart Highlighter", "detail": f"Applied Yellow fill to {updates} newly resolved cells."},
+                {"label": "Audit Generation", "detail": "Exporting 'Z_Recon_Step2_Resolved.xlsx' for manual review."}
+            ]
         }
     except Exception as e: return {"success": False, "error": str(e)}
+
+def validate_eager_all():
+    """High-speed parallel orchestrator for the entire monthly pipeline."""
+    from app.services.automation_engine import warmup_all_files
+    import time
+    
+    start = time.time()
+    # 1. Gather all Master Source file paths
+    files_to_warm = []
+    # Identify the 5 key master files
+    for prefix in ["Z Recon", "Revenue Dump", "Cost dump", "SO Listing", "Invoice Listing"]:
+        path = get_file_by_heuristic(prefix)
+        if path: files_to_warm.append(path)
+    
+    # 2. Parallel Burst Warmup (Warms up binary cache for ALL steps)
+    warmup_all_files(files_to_warm)
+    
+    # 3. Synchronous sub-results (Hitting cache now, so this is instant)
+    z_res = parse_zrecon()
+    r_res = parse_revenue()
+    c_res = parse_cost()
+    
+    # 4. Aggregated result for the Dashboard
+    return {
+        "success": True,
+        "execution_time_sec": round(time.time() - start, 2),
+        "data": {
+            "zrecon": z_res,
+            "revenue": r_res,
+            "cost": c_res
+        },
+        "warmed_up": [os.path.basename(f) for f in files_to_warm]
+    }
