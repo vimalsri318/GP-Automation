@@ -14,7 +14,8 @@ import {
   FileCheck2,
   FolderOpen,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Settings2
 } from 'lucide-react';
 
 export default function Home() {
@@ -40,6 +41,11 @@ export default function Home() {
   const [loadingStep3, setLoadingStep3] = useState(false);
   const [step3Result, setStep3Result] = useState<any>(null);
   
+  // Step 0 States (Format Standardization)
+  const [loadingStep0, setLoadingStep0] = useState(false);
+  const [step0Result, setStep0Result] = useState<any>(null);
+  const [step0Month, setStep0Month] = useState<string>('');
+
   // Step 4 States (Invoice & Narration Sync)
   const [loadingStep4, setLoadingStep4] = useState(false);
   const [step4Result, setStep4Result] = useState<any>(null);
@@ -49,6 +55,7 @@ export default function Home() {
   const [step5Result, setStep5Result] = useState<any>(null);
   
   const [steps, setSteps] = useState([
+    { id: 'standardize', name: 'Initializing Target Format', status: 'idle', error: '' },
     { id: 'zrecon', name: 'Parsing Z-Recon Base File', status: 'idle', error: '' },
     { id: 'revenue', name: 'Parsing Revenue Dump', status: 'idle', error: '' },
     { id: 'cost', name: 'Parsing Cost Dump', status: 'idle', error: '' }
@@ -133,6 +140,27 @@ export default function Home() {
     }
   };
 
+
+  const handleStep0 = async () => {
+    setLoadingStep0(true);
+    try {
+      const response = await axios.get(`http://localhost:8000/api/step2/standardize/initial_format?month=${encodeURIComponent(step0Month)}`);
+      if (response.data.success) {
+        setStep0Result(response.data);
+        setActiveProcess(0);
+        // Mark step as complete
+        setSteps(prev => prev.map(s => s.id === 'standardize' ? { ...s, status: 'complete' } : s));
+      } else {
+        alert(response.data.error || "Failed Format Standardization");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error executing Step 0 initialization.");
+    } finally {
+      setLoadingStep0(false);
+    }
+  };
+
   const handleStep2 = async () => {
     setLoadingStep2(true);
     try {
@@ -141,7 +169,7 @@ export default function Home() {
         setStep2Result(response.data);
         setActiveProcess(2);
       } else {
-        alert(response.data.error || "Failed Cross-Invoice Integrity check");
+        alert(response.data.error || "Failed Step 2 Logic");
       }
     } catch (e) {
       console.error(e);
@@ -159,7 +187,7 @@ export default function Home() {
         setStep3Result(response.data);
         setActiveProcess(3);
       } else {
-        alert(response.data.error || "Failed CMIR Resolution");
+        alert(response.data.error || "Failed Step 3 Logic");
       }
     } catch (e) {
       console.error(e);
@@ -547,6 +575,101 @@ export default function Home() {
                         </div>
                     </div>
                  </div>
+
+                  {/* STEP 0: INITIALIZATION */}
+                  <div className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 mb-4 overflow-hidden">
+                      <div className="px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer" onClick={() => setActiveProcess(activeProcess === 0 ? null : 0)}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold font-mono text-lg ${activeProcess === 0 ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              0
+                          </div>
+                          <div className="flex-1 sm:px-4 mt-3 sm:mt-0">
+                              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                  Target Format Standardization
+                                  {step0Result && <CheckCircle2 className="w-5 h-5 text-indigo-500" />}
+                              </h3>
+                              <p className="text-sm text-slate-500 mt-0.5 mb-2">Initialize Z-Recon with standard month-aligned template columns.</p>
+                              
+                              {!step0Result && (
+                                <div className="max-w-xs mt-2 relative">
+                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400 uppercase">Input Month:</span>
+                                    <input 
+                                        type="text" 
+                                        placeholder="e.g. February 2026"
+                                        value={step0Month}
+                                        onChange={(e) => setStep0Month(e.target.value)}
+                                        className="w-full pl-24 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none"
+                                    />
+                                </div>
+                              )}
+                          </div>
+                          <div className="shrink-0 mt-3 sm:mt-0 flex items-center gap-3">
+                              <button 
+                                  onClick={(e) => { e.stopPropagation(); handleStep0(); }}
+                                  disabled={loadingStep0}
+                                  className="px-5 py-2 bg-indigo-600 text-white font-semibold text-sm rounded-lg shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center gap-2"
+                              >
+                                  {loadingStep0 ? <><Loader2 className="w-4 h-4 animate-spin"/> Processing...</> : <><Settings2 className="w-4 h-4"/> Standardize & Start</>}
+                              </button>
+                              {activeProcess === 0 ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                          </div>
+                      </div>
+
+                      {/* Dropdown Audit Results */}
+                      <div className={`grid transition-[grid-template-rows,opacity] duration-500 ease-in-out ${activeProcess === 0 ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                          <div className="overflow-hidden">
+                              {step0Result && (
+                                  <div className="p-5 bg-indigo-50/30 border-t border-slate-100">
+                                      <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                          <Activity className="w-5 h-5 text-indigo-500" />
+                                          Initialization Report
+                                      </h4>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Month Detected</p>
+                                              <p className="text-xl font-bold text-slate-800">{step0Result.month_detected}</p>
+                                          </div>
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Columns Mapped</p>
+                                              <p className="text-xl font-bold font-mono text-slate-800">{step0Result.columns_mapped}</p>
+                                          </div>
+                                      </div>
+
+                                      {/* PIPELINE BREAKDOWN */}
+                                      {step0Result.process_steps && (
+                                      <div className="mt-6 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                                          <h5 className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest flex items-center gap-2">
+                                              <Database className="w-4 h-4 text-indigo-500" />
+                                              Execution Timeline
+                                          </h5>
+                                          
+                                          <div className="space-y-6">
+                                              {step0Result.process_steps.map((step: any, idx: number) => (
+                                                  <div key={idx} className="relative flex gap-4">
+                                                      {idx !== step0Result.process_steps.length - 1 && (
+                                                          <div className="absolute left-[11px] top-6 w-[2px] h-full bg-slate-100" />
+                                                      )}
+                                                      <div className={`z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${idx === step0Result.process_steps.length - 1 ? 'bg-indigo-600 border-indigo-200 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                          {idx + 1}
+                                                      </div>
+                                                      <div className="flex-1 pb-2">
+                                                          <p className="text-sm font-bold text-slate-700 leading-none">{step.label}</p>
+                                                          <p className="text-xs text-slate-500 mt-1.5 italic bg-slate-50 inline-block px-2 py-0.5 rounded border border-slate-100">{step.detail}</p>
+                                                      </div>
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </div>
+                                      )}
+                                  </div>
+                              )}
+                              {!step0Result && !loadingStep0 && (
+                                  <div className="p-8 text-center text-slate-400 text-sm">
+                                      Click Standardize to initialize the Z-Recon formatting bridge.
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
 
                  {/* PROCESS STEP 2: Cross-Invoice Integrity */}
                  <div className="border border-slate-200 rounded-2xl bg-white shadow-sm overflow-hidden flex flex-col transition-all">

@@ -65,8 +65,14 @@ def get_col_strict(df, *keywords):
 
 def parse_zrecon() -> Dict[str, Any]:
     try:
-        file_path = get_file_by_heuristic("Z Recon")
-        z_df = get_cached_dataframe(file_path, engine='calamine')
+        # Check for standardized base from Step 0
+        from app.services.automation_engine import CACHE_DIR
+        z_step0_path = os.path.join(CACHE_DIR, "Z_Recon_Step0.pkl")
+        if os.path.exists(z_step0_path):
+            z_df = pd.read_pickle(z_step0_path)
+        else:
+            file_path = get_file_by_heuristic("Z Recon")
+            z_df = get_cached_dataframe(file_path, engine='calamine')
         co_col = get_col_from_df(z_df, "company code")
         if co_col: z_df = z_df[z_df[co_col].notna()]
         rev_col = get_col_from_df(z_df, "revenue")
@@ -124,11 +130,19 @@ def parse_cost() -> Dict[str, Any]:
 def cross_invoice_integrity() -> Dict[str, Any]:
     """Step 2: Cross Invoice Integrity (VISUAL AUDIT EMPOWERED)"""
     try:
-        z_path = get_file_by_heuristic("Z Recon")
+        # Check for standardized base from Step 0
+        from app.services.automation_engine import CACHE_DIR
+        z_step0_path = os.path.join(CACHE_DIR, "Z_Recon_Step0.pkl")
+        if os.path.exists(z_step0_path):
+            z_df = pd.read_pickle(z_step0_path)
+            print("💎 [Engine] Using Standardized Step 0 Format as Base.")
+        else:
+            z_path = get_file_by_heuristic("Z Recon")
+            z_df = get_cached_dataframe(z_path, engine='calamine')
+        
         r_path = get_file_by_heuristic("Revenue Dump")
         i_path = get_file_by_heuristic("Invoice")
         
-        z_df = get_cached_dataframe(z_path, engine='calamine')
         r_df = get_cached_dataframe(r_path, sheet_name=1, engine='calamine')
         if r_df.empty or len(r_df.columns) < 5: r_df = get_cached_dataframe(r_path, sheet_name=0, engine='calamine')
         i_df = get_cached_dataframe(i_path, engine='calamine')
@@ -184,19 +198,21 @@ def cross_invoice_integrity() -> Dict[str, Any]:
                 
                 t_prep = time.perf_counter()
                 # Source base file (Preserve original for audit)
-                src_path = get_file_by_heuristic("Z Recon")
-                out_path = os.path.join(str(root), "Z_Recon_Step2_Resolved.xlsx")
+                # SOURCE BASE: Check for standardized format from Step 0, else raw raw
+                std_path = os.path.join(str(root), "Z_Recon_Standardized_Format.xlsx")
+                # Output directly to the standardized file provided by Step 0
+                out_path = std_path if os.path.exists(std_path) else os.path.join(str(root), "Z_Recon_Standardized_Format.xlsx")
                 
-                # 4.1 Copy File
-                shutil.copy2(src_path, out_path)
-                t_copy = time.perf_counter()
-                print(f"⏱️ [PERF] Audit: File Copied | Time: {int((t_copy - t_prep) * 1000)}ms")
-                
+                # If Step 0 hasn't run, Step 2 becomes the creator
+                if not os.path.exists(out_path):
+                    src_path = get_file_by_heuristic("Z Recon")
+                    shutil.copy2(src_path, out_path)
+
                 # 4.2 Load Workbook (THE WEIGHT)
                 wb = load_workbook(out_path)
                 ws = wb.active
                 t_load = time.perf_counter()
-                print(f"⏱️ [PERF] Audit: Workbook Loaded | Time: {int((t_load - t_copy) * 1000)}ms")
+                print(f"⏱️ [PERF] Audit: Workbook Loaded | Time: {int((t_load - t_prep) * 1000)}ms")
                 
                 # Identify column index
                 headers = [str(cell.value).lower().strip() for cell in ws[1]]

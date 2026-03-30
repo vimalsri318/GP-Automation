@@ -81,7 +81,7 @@ def resolve_invoice_narration():
             from openpyxl import load_workbook
             from openpyxl.styles import PatternFill
             try:
-                src_path = os.path.join(str(root), "Z_Recon_Step2_Resolved.xlsx")
+                src_path = os.path.join(str(root), "Z_Recon_Standardized_Format.xlsx")
                 if not os.path.exists(src_path): return
                 
                 wb = load_workbook(src_path)

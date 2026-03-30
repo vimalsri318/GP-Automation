@@ -2,8 +2,14 @@
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 from app.services.step2_service import get_system_files, parse_zrecon, parse_revenue, parse_cost, cross_invoice_integrity, validate_eager_all
+from app.services.recon_standardizer import standardize_recon_format
 
 router = APIRouter(prefix="/api/step2", tags=["Step2"])
+
+@router.get("/standardize/initial_format")
+async def standardize_format_api(month: str = None):
+    """Initial Step 0: Standardize raw Z-Recon into template format"""
+    return standardize_recon_format(month_name=month)
 
 @router.get("/files")
 async def list_files():
