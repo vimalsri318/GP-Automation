@@ -44,6 +44,10 @@ export default function Home() {
   const [loadingStep4, setLoadingStep4] = useState(false);
   const [step4Result, setStep4Result] = useState<any>(null);
   
+  // Step 5 States (Secondary Narration Recovery)
+  const [loadingStep5, setLoadingStep5] = useState(false);
+  const [step5Result, setStep5Result] = useState<any>(null);
+  
   const [steps, setSteps] = useState([
     { id: 'zrecon', name: 'Parsing Z-Recon Base File', status: 'idle', error: '' },
     { id: 'revenue', name: 'Parsing Revenue Dump', status: 'idle', error: '' },
@@ -180,6 +184,24 @@ export default function Home() {
       alert("Error executing Step 4. Is the backend running?");
     } finally {
       setLoadingStep4(false);
+    }
+  };
+
+  const handleStep5 = async () => {
+    setLoadingStep5(true);
+    try {
+      const response = await axios.get('http://localhost:8000/api/step5/validate/secondary_narration');
+      if (response.data.success) {
+        setStep5Result(response.data);
+        setActiveProcess(5);
+      } else {
+        alert(response.data.error || "Failed Secondary Narration Recovery");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error executing Step 5. Is the backend running?");
+    } finally {
+      setLoadingStep5(false);
     }
   };
 
@@ -811,6 +833,123 @@ export default function Home() {
                               {!step4Result && !loadingStep4 && (
                                   <div className="p-8 text-center text-slate-400 text-sm">
                                       Execute the Master Sync to recover Invoice and Narration data.
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* STEP 5: SECONDARY NARRATION RECOVERY */}
+                  <div className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 mb-4 overflow-hidden">
+                      <div className="px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer" onClick={() => setActiveProcess(activeProcess === 5 ? 0 : 5)}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold font-mono text-lg ${activeProcess === 5 ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              5
+                          </div>
+                          <div className="flex-1 sm:px-4 mt-3 sm:mt-0">
+                              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                  Secondary Narration Recovery
+                                  {step5Result && <CheckCircle2 className="w-5 h-5 text-violet-500" />}
+                              </h3>
+                              <p className="text-sm text-slate-500 mt-0.5">Recover narration via SO Listing or Cost Dump as fallback.</p>
+                          </div>
+                          <div className="shrink-0 mt-3 sm:mt-0 flex items-center gap-3">
+                              <button 
+                                  onClick={(e) => { e.stopPropagation(); handleStep5(); }}
+                                  disabled={loadingStep5}
+                                  className="px-5 py-2 bg-black text-white font-semibold text-sm rounded-lg shadow-sm hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
+                              >
+                                  {loadingStep5 ? <><Loader2 className="w-4 h-4 animate-spin"/> Executing...</> : <><Zap className="w-4 h-4"/> Run Narration Recovery</>}
+                              </button>
+                              {activeProcess === 5 ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                          </div>
+                      </div>
+
+                      {/* Dropdown Audit Results */}
+                      <div className={`grid transition-[grid-template-rows,opacity] duration-500 ease-in-out ${activeProcess === 5 ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                          <div className="overflow-hidden">
+                              {step5Result && (
+                                  <div className="p-5 bg-violet-50/30 border-t border-slate-100">
+                                      <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                          <Activity className="w-5 h-5 text-violet-500" />
+                                          Secondary Narration Report
+                                      </h4>
+                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Updates via SO</p>
+                                              <p className="text-2xl font-bold font-mono text-slate-800">{step5Result.updates_via_so?.toLocaleString()}</p>
+                                          </div>
+                                          <div className="bg-violet-600 p-4 border border-violet-700 rounded-xl shadow-md text-white">
+                                              <p className="text-xs text-violet-100 font-semibold mb-1 uppercase">Updates via Cost Dump</p>
+                                              <p className="text-2xl font-bold font-mono text-white">{step5Result.updates_via_cost?.toLocaleString()}</p>
+                                          </div>
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Total Recovered</p>
+                                              <p className="text-2xl font-bold font-mono text-slate-800">{step5Result.updates_applied?.toLocaleString()}</p>
+                                          </div>
+                                      </div>
+
+                                       {/* DATA PREVIEW SNIPPET */}
+                                       {step5Result.samples && step5Result.samples.length > 0 && (
+                                           <div className="mt-6 mb-8">
+                                               <h5 className="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-widest flex items-center gap-2 px-1">
+                                                   <Activity className="w-3 h-3" />
+                                                   Data Preview (Recovered)
+                                               </h5>
+                                               <div className="bg-white border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                                                   <table className="w-full text-left text-xs">
+                                                       <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-100">
+                                                           <tr>
+                                                               <th className="px-4 py-2 w-32 font-mono">Doc ID</th>
+                                                               <th className="px-4 py-2">Recovered Narration</th>
+                                                           </tr>
+                                                       </thead>
+                                                       <tbody className="divide-y divide-slate-50">
+                                                           {step5Result.samples.map((s: any, idx: number) => (
+                                                               <tr key={idx} className="hover:bg-violet-50/20 transition-colors">
+                                                                   <td className="px-4 py-2.5 font-mono text-slate-400">{s.id}</td>
+                                                                   <td className="px-4 py-2.5 font-medium text-slate-700">{s.narration}</td>
+                                                               </tr>
+                                                           ))}
+                                                       </tbody>
+                                                   </table>
+                                                   <div className="bg-slate-50 px-4 py-2 text-[10px] text-slate-400 italic text-center">
+                                                       Showing top {step5Result.samples.length} recovered entries. Full data available in Excel.
+                                                   </div>
+                                               </div>
+                                           </div>
+                                       )}
+
+                                      {/* PIPELINE BREAKDOWN */}
+                                      {step5Result.process_steps && (
+                                      <div className="mt-6 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                                          <h5 className="text-sm font-bold text-slate-800 mb-6 flex items-center gap-2">
+                                              <Database className="w-4 h-4 text-violet-500" />
+                                              Execution Timeline & Sub-Steps
+                                          </h5>
+                                          
+                                          <div className="space-y-6">
+                                              {step5Result.process_steps.map((step: any, idx: number) => (
+                                                  <div key={idx} className="relative flex gap-4">
+                                                      {idx !== step5Result.process_steps.length - 1 && (
+                                                          <div className="absolute left-[11px] top-6 w-[2px] h-full bg-slate-100" />
+                                                      )}
+                                                      <div className={`z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${idx === step5Result.process_steps.length - 1 ? 'bg-violet-600 border-violet-200 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                          {idx + 1}
+                                                      </div>
+                                                      <div className="flex-1 pb-2">
+                                                          <p className="text-sm font-bold text-slate-700 leading-none">{step.label}</p>
+                                                          <p className="text-xs text-slate-500 mt-1.5 italic bg-slate-50 inline-block px-2 py-0.5 rounded border border-slate-100">{step.detail}</p>
+                                                      </div>
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </div>
+                                      )}
+                                  </div>
+                              )}
+                              {!step5Result && !loadingStep5 && (
+                                  <div className="p-8 text-center text-slate-400 text-sm">
+                                      Execute Step 5 to recover the remaining narrations via secondary bridges.
                                   </div>
                               )}
                           </div>
