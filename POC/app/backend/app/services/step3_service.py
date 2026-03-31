@@ -85,7 +85,7 @@ def resolve_cmir_types() -> Dict[str, Any]:
         # 7. Visual Audit: Highlighting (ORANGE)
         def save_orange_highlight_audit(df, root, updated_indices, cmir_col_name):
             try:
-                src_path = os.path.join(str(root), "Z_Recon_Standardized_Format.xlsx")
+                out_path = os.path.join(str(root), "Z_Recon_Standardized_Format.xlsx")
                 col_idx = df.columns.get_loc(cmir_col_name)
                 
                 # We need to re-open the file we saved in Step 2 to preserve yellow highlights

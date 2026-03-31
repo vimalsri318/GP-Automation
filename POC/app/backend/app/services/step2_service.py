@@ -43,7 +43,10 @@ def get_file_by_heuristic(prefix: str):
             files_in_dir.extend([os.path.join(d, f) for f in os.listdir(d) if not f.startswith("~$") and "_Resolved" not in f])
     
     if prefix == "Revenue Dump":
-        file_path = next((f for f in files_in_dir if "revenue" in os.path.basename(f).lower()), None)
+        # Prioritize "Revenue Dump" string to avoid matching the "Revenue Master" file
+        file_path = next((f for f in files_in_dir if "revenue" in os.path.basename(f).lower() and "dump" in os.path.basename(f).lower()), None)
+        if not file_path:
+            file_path = next((f for f in files_in_dir if "revenue" in os.path.basename(f).lower()), None)
     elif prefix == "Cost":
         file_path = next((f for f in files_in_dir if "cost" in os.path.basename(f).lower()), None)
     else:
@@ -114,7 +117,10 @@ def extract_programmatic_pivots(df: pd.DataFrame, source_type: str) -> tuple[flo
 def parse_revenue() -> Dict[str, Any]:
     try:
         path = get_file_by_heuristic("Revenue Dump")
-        df = get_cached_dataframe(path, sheet_name=1, engine='calamine')
+        try:
+            df = get_cached_dataframe(path, sheet_name=1, engine='calamine')
+        except Exception:
+            df = get_cached_dataframe(path, sheet_name=0, engine='calamine')
         s, c, v, p = extract_programmatic_pivots(df, "Revenue Dump")
         return {"success": True, "data": {"revenue_sum": round(float(s), 2), "pivot_count": c, "pivots_consistent": v, "pivots": p}}
     except Exception as e: return {"success": False, "error": str(e)}
@@ -122,7 +128,10 @@ def parse_revenue() -> Dict[str, Any]:
 def parse_cost() -> Dict[str, Any]:
     try:
         path = get_file_by_heuristic("Cost")
-        df = get_cached_dataframe(path, sheet_name=1, engine='calamine')
+        try:
+            df = get_cached_dataframe(path, sheet_name=1, engine='calamine')
+        except Exception:
+            df = get_cached_dataframe(path, sheet_name=0, engine='calamine')
         s, c, v, p = extract_programmatic_pivots(df, "Cost Dump")
         return {"success": True, "data": {"cost_sum": round(float(s), 2), "pivot_count": c, "pivots_consistent": v, "pivots": p}}
     except Exception as e: return {"success": False, "error": str(e)}
@@ -143,8 +152,16 @@ def cross_invoice_integrity() -> Dict[str, Any]:
         r_path = get_file_by_heuristic("Revenue Dump")
         i_path = get_file_by_heuristic("Invoice")
         
-        r_df = get_cached_dataframe(r_path, sheet_name=1, engine='calamine')
-        if r_df.empty or len(r_df.columns) < 5: r_df = get_cached_dataframe(r_path, sheet_name=0, engine='calamine')
+        try:
+            r_df = get_cached_dataframe(r_path, sheet_name=1, engine='calamine')
+        except Exception:
+            r_df = get_cached_dataframe(r_path, sheet_name=0, engine='calamine')
+            
+        if r_df.empty or len(r_df.columns) < 5: 
+            try:
+                r_df = get_cached_dataframe(r_path, sheet_name=0, engine='calamine')
+            except Exception: pass
+            
         i_df = get_cached_dataframe(i_path, engine='calamine')
 
         z_acc_col = get_col_strict(z_df, "accounting document")
@@ -155,8 +172,14 @@ def cross_invoice_integrity() -> Dict[str, Any]:
         i_so1_col = get_col_strict(i_df, "sales order no", "sales order", "sales order inv number")
         i_so2_col = get_col_strict(i_df, "so number2", "so number 2")
 
-        if not all([z_acc_col, r_doc_col, r_ref_col, i_inv_col]):
-            return {"success": False, "error": "Schema mismatch. Column AC or B/C missing."}
+        missing_cols = []
+        if not z_acc_col: missing_cols.append("Z-Recon: Accounting Document")
+        if not r_doc_col: missing_cols.append("Revenue: Document Number")
+        if not r_ref_col: missing_cols.append("Revenue: Reference Key")
+        if not i_inv_col: missing_cols.append("Invoice: Invoice No")
+        
+        if missing_cols:
+            return {"success": False, "error": f"Schema mismatch. Missing: {', '.join(missing_cols)}"}
 
         # 1. identification
         if z_so_col not in z_df.columns: z_df[z_so_col] = None

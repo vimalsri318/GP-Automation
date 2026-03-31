@@ -15,11 +15,14 @@ import {
   FolderOpen,
   ChevronDown,
   ChevronUp,
-  Settings2
+  Settings2,
+  Scroll,
+  Layers
 } from 'lucide-react';
+import CategoryMasterEditor from './components/CategoryMasterEditor';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<'files' | 'validation'>('files');
+  const [activeTab, setActiveTab] = useState<'files' | 'validation' | 'categories'>('files');
   const [activeProcess, setActiveProcess] = useState<number | null>(1);
   const [expandedPivots, setExpandedPivots] = useState({ revenue: false, cost: false });
 
@@ -53,6 +56,10 @@ export default function Home() {
   // Step 5 States (Secondary Narration Recovery)
   const [loadingStep5, setLoadingStep5] = useState(false);
   const [step5Result, setStep5Result] = useState<any>(null);
+
+  // Step 6 States (Category Mapping)
+  const [loadingStep6, setLoadingStep6] = useState(false);
+  const [step6Result, setStep6Result] = useState<any>(null);
   
   const [steps, setSteps] = useState([
     { id: 'standardize', name: 'Initializing Target Format', status: 'idle', error: '' },
@@ -233,6 +240,24 @@ export default function Home() {
     }
   };
 
+  const handleStep6 = async () => {
+    setLoadingStep6(true);
+    try {
+      const response = await axios.get('http://localhost:8000/api/step6/process');
+      if (response.data.success) {
+        setStep6Result(response.data);
+        setActiveProcess(6);
+      } else {
+        alert(response.data.error || "Failed Category Mapping");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Error executing Step 6. Is the backend running?");
+    } finally {
+      setLoadingStep6(false);
+    }
+  };
+
   const getFileIconColor = (type: string) => {
     if (type.includes("Z Recon")) return "text-emerald-500 bg-emerald-100";
     if (type.includes("Revenue")) return "text-indigo-500 bg-indigo-100";
@@ -278,6 +303,18 @@ export default function Home() {
           >
             <Activity size={20} />
             <span>Workflow Checks</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('categories')}
+            className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200 ${
+              activeTab === 'categories' 
+                ? 'bg-neutral-900 text-white font-semibold' 
+                : 'hover:bg-neutral-900 hover:text-white border border-transparent'
+            }`}
+          >
+            <Layers size={20} />
+            <span>Category Master</span>
           </button>
         </nav>
       </aside>
@@ -1078,7 +1115,123 @@ export default function Home() {
                           </div>
                       </div>
                   </div>
+
+                  {/* STEP 6: DYNAMIC CATEGORY MAPPING */}
+                  <div className="bg-white border border-slate-100 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300 mb-8 overflow-hidden">
+                      <div className="px-6 py-5 flex flex-col sm:flex-row sm:items-center gap-4 cursor-pointer" onClick={() => setActiveProcess(activeProcess === 6 ? 0 : 6)}>
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold font-mono text-lg ${activeProcess === 6 ? 'bg-cyan-600 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                              6
+                          </div>
+                          <div className="flex-1 sm:px-4 mt-3 sm:mt-0">
+                              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                  Dynamic Category Mapping
+                                  {step6Result && <CheckCircle2 className="w-5 h-5 text-cyan-600" />}
+                              </h3>
+                              <p className="text-sm text-slate-500 mt-0.5">Automated waterfall mapping for Row AC based on SAP Transaction Types.</p>
+                          </div>
+                          <div className="shrink-0 mt-3 sm:mt-0 flex items-center gap-3">
+                              <button 
+                                  onClick={(e) => { e.stopPropagation(); handleStep6(); }}
+                                  disabled={loadingStep6}
+                                  className="px-5 py-2 bg-black text-white font-semibold text-sm rounded-lg shadow-sm hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
+                              >
+                                  {loadingStep6 ? <><Loader2 className="w-4 h-4 animate-spin"/> Executing...</> : <><Zap className="w-4 h-4"/> Run Final Mapping</>}
+                              </button>
+                              {activeProcess === 6 ? <ChevronUp className="w-5 h-5 text-slate-400" /> : <ChevronDown className="w-5 h-5 text-slate-400" />}
+                          </div>
+                      </div>
+
+                      {/* Dropdown Audit Results */}
+                      <div className={`grid transition-[grid-template-rows,opacity] duration-500 ease-in-out ${activeProcess === 6 ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+                          <div className="overflow-hidden">
+                              {step6Result && (
+                                  <div className="p-5 bg-cyan-50/30 border-t border-slate-100">
+                                      <h4 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
+                                          <Scroll className="w-5 h-5 text-cyan-600" />
+                                          Final Category Mapping Report
+                                      </h4>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Updates Applied</p>
+                                              <p className="text-3xl font-bold font-mono text-slate-800">{step6Result.updates_applied?.toLocaleString()}</p>
+                                              <p className="text-xs text-slate-400 mt-1">Cells updated in Column AC</p>
+                                          </div>
+                                          <div className="bg-white p-4 border border-slate-200 rounded-xl shadow-sm">
+                                              <p className="text-xs text-slate-500 font-semibold mb-1 uppercase">Audit Performance</p>
+                                              <p className="text-3xl font-bold font-mono text-slate-800">{step6Result.execution_time_ms}ms</p>
+                                              <p className="text-xs text-slate-400 mt-1">Multi-threaded formatting applied</p>
+                                          </div>
+                                      </div>
+
+                                      {/* PIPELINE BREAKDOWN */}
+                                      {step6Result.process_steps && (
+                                      <div className="mt-6 bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                                          <h5 className="text-[10px] font-bold text-slate-400 mb-6 uppercase tracking-widest flex items-center gap-2 px-1">
+                                              <Database className="w-4 h-4 text-cyan-600" />
+                                              Execution sub-steps
+                                          </h5>
+                                          
+                                          <div className="space-y-6">
+                                              {step6Result.process_steps.map((step: any, idx: number) => (
+                                                  <div key={idx} className="relative flex gap-4">
+                                                      {idx !== step6Result.process_steps.length - 1 && (
+                                                          <div className="absolute left-[11px] top-6 w-[2px] h-full bg-slate-100" />
+                                                      )}
+                                                      <div className={`z-10 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 ${idx === step6Result.process_steps.length - 1 ? 'bg-cyan-600 border-cyan-200 text-white' : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                          {idx + 1}
+                                                      </div>
+                                                      <div className="flex-1 pb-2">
+                                                          <p className="text-sm font-bold text-slate-700 leading-none">{step.label}</p>
+                                                          <p className="text-xs text-slate-500 mt-1.5 px-3 py-2 bg-slate-50 border border-slate-100 italic rounded-lg">
+                                                              {step.detail}
+                                                          </p>
+                                                      </div>
+                                                  </div>
+                                              ))}
+                                          </div>
+                                      </div>
+                                      )}
+
+                                      <div className="mt-6 p-4 bg-cyan-600 text-white rounded-xl shadow-lg flex items-center justify-between">
+                                          <div className="flex items-center space-x-3">
+                                              <div className="p-2 bg-white/20 rounded-lg">
+                                                  <FileCheck2 size={24} />
+                                              </div>
+                                              <div>
+                                                  <h5 className="font-bold">Audit Ready Export</h5>
+                                                  <p className="text-xs text-cyan-50">Visual highlights (Light Cyan) applied to Final-Zrecon.xlsx</p>
+                                              </div>
+                                          </div>
+                                          <button className="px-4 py-2 bg-white text-cyan-900 text-xs font-bold rounded-lg hover:bg-cyan-50 transition-colors">
+                                              Open Audit File
+                                          </button>
+                                      </div>
+                                  </div>
+                              )}
+                              {!step6Result && !loadingStep6 && (
+                                  <div className="p-8 text-center text-slate-400 text-sm">
+                                      Execute Step 6 to finalize the Category Mapping (Accounting AC).
+                                  </div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
                 </div>
+              </div>
+            )}
+
+            {/* ========================================== */}
+            {/* TAB: CATEGORY MASTER EDITOR */}
+            {/* ========================================== */}
+            {activeTab === 'categories' && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="mb-8">
+                  <h2 className="text-3xl font-extrabold tracking-tight text-slate-900">Category Master Configuration</h2>
+                  <p className="text-slate-500 mt-2">
+                    Modify the mapping rules directly. These changes are synchronized with <code className="bg-slate-200 px-1 rounded">Input Master.xlsx</code>.
+                  </p>
+                </div>
+                <CategoryMasterEditor />
               </div>
             )}
           </div>
