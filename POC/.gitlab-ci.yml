@@ -18,7 +18,7 @@ lint:backend:
 # LINT: Frontend Next.js checks (Non-Blocking styling)
 lint:frontend:
   stage: lint
-  image: node:18-alpine
+  image: node:20-alpine
   allow_failure: true
   script:
     - cd app/frontend

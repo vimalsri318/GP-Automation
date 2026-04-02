@@ -1,7 +1,7 @@
-import pytest
+#import pytest
 import pandas as pd
 from app.services.step6_service import execute_step6_category_mapping
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch #, MagicMock
 
 def test_step6_mapping_logic(mock_zrecon_df, mock_category_mapping):
     """

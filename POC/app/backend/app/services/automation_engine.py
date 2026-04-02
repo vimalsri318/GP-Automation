@@ -1,10 +1,12 @@
 import os
 import pandas as pd
 import hashlib
-import glob
-from typing import Dict, Any, List, Optional
+from typing import Any, List, Optional
 from pathlib import Path
 from config import BASE_DIR
+import queue
+import threading
+# import time
 
 # --------------------------------------------------------------------------------
 # PATH CONFIGURATION
@@ -44,7 +46,7 @@ def get_col_from_df(df: pd.DataFrame, *target_keys: str) -> Optional[str]:
 def get_cached_dataframe(file_path: str, sheet_name: Any = 0, engine: str = 'openpyxl') -> pd.DataFrame:
     """Retrieves high-speed binary with high-resolution performance logging."""
     import time
-    start_all = time.perf_counter()
+    # start_all = time.perf_counter()
     
     if not os.path.exists(CACHE_DIR):
         os.makedirs(CACHE_DIR, exist_ok=True)
@@ -120,9 +122,7 @@ def is_file_cached(file_path: str, sheet_name=0) -> bool:
     cache_path = os.path.join(CACHE_DIR, f"{base_hash}_{int(mtime)}.pkl")
     return os.path.exists(cache_path)
 
-import queue
-import threading
-import time
+
 
 class GlobalAuditManager:
     """Manages sequential Excel audit writes to prevent race conditions."""

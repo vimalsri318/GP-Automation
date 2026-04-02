@@ -1,6 +1,6 @@
 import os
 import pandas as pd
-from pathlib import Path
+# from pathlib import Path
 
 INPUT_DIR = "/Users/macbook/Downloads/Library/PROJECTS/Randstad/Untitled/POC/Input Files"
 

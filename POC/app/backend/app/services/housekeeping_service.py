@@ -1,7 +1,6 @@
 import os
 import shutil
 import requests
-import json
 from dotenv import load_dotenv
 from app.services.automation_engine import CACHE_DIR
 

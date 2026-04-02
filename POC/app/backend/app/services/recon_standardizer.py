@@ -2,8 +2,14 @@ import os
 import pandas as pd
 import time
 import re
-from app.services.step2_service import get_file_by_heuristic, get_col_strict
-from app.services.automation_engine import PROJECT_ROOT, INPUT_DIR, CACHE_DIR, get_cached_dataframe, get_audit_manager
+#from app.services.step2_service import get_file_by_heuristic, get_col_strict
+from app.services.automation_engine import PROJECT_ROOT, INPUT_DIR, CACHE_DIR, get_cached_dataframe
+# from app.services.automation_engine import PROJECT_ROOT, INPUT_DIR, CACHE_DIR, get_cached_dataframe, get_audit_manager
+
+from app.services.automation_engine import (
+    PROJECT_ROOT, INPUT_DIR, CACHE_DIR,
+    get_cached_dataframe, get_file_by_heuristic, get_col_strict
+)
 
 def standardize_recon_format(month_name: str = None):
     """
@@ -52,7 +58,7 @@ def standardize_recon_format(month_name: str = None):
         
         # b) Map existing data (Assuming columns 1 to 20 match raw_df columns)
         # We will do smarter mapping to be safe
-        raw_cols = list(raw_df.columns)
+        #raw_cols = list(raw_df.columns)
         target_cols = list(target_df.columns)
         
         # We know from analysis that target_cols[1:21] should match raw_cols

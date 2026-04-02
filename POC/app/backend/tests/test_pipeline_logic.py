@@ -1,9 +1,10 @@
 import pytest
 import pandas as pd
-import os
-from unittest.mock import patch, MagicMock
-from app.services.step2_service import normalize_sap_id, get_col_strict
-from app.services.step6_service import execute_step6_category_mapping
+#import os
+#from unittest.mock import patch, MagicMock
+from app.services.step2_service import get_col_strict
+#from app.services.step6_service import execute_step6_category_mapping
+from unittest.mock import patch
 
 # ==========================================
 # TEST 1: ID NORMALIZATION (The Worst Case Formatting)
@@ -78,10 +79,10 @@ def test_file_heuristic_collision():
     """Verifies that 'Revenue Dump' doesn't pick up the 'Revenue Master' file."""
     from app.services.step2_service import get_file_by_heuristic
     
-    files = [
-        "/tmp/Revenue Dump - Feb 2026.xlsx",
-        "/tmp/Revenue file - Automation - Input Master.xlsx"
-    ]
+    # files = [
+    #     "/tmp/Revenue Dump - Feb 2026.xlsx",
+    #     "/tmp/Revenue file - Automation - Input Master.xlsx"
+    # ]
     
     with patch("os.path.exists", return_value=True), \
          patch("app.services.step2_service.INPUT_DIR", "/tmp"), \

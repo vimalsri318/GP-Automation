@@ -128,7 +128,7 @@ def execute_step6_category_mapping():
             "process_steps": [
                 {"label": "Standard Rule", "detail": f"Accounting documents starting with '1' assigned to '{starts_with_1_category}'."},
                 {"label": "Master Rule Sync", "detail": f"Matched records against {len(mapping_list)} dynamic CMIR mappings."},
-                {"label": "Audit Layout", "detail": f"Injected results into Category column with specialized highlighting."}
+                {"label": "Audit Layout", "detail": "Injected results into Category column with specialized highlighting."}
             ]
         }
     except Exception as e:

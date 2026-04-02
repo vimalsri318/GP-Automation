@@ -1,13 +1,13 @@
 import os
 import pandas as pd  # type: ignore
-from typing import Dict, Any, Optional
-from pathlib import Path
-from config import BASE_DIR  # type: ignore
+from typing import Dict, Any
+# from pathlib import Path
+# from config import BASE_DIR  # type: ignore
 from app.services.automation_engine import (
     get_cached_dataframe, 
-    normalize_sap_id, 
-    get_col_from_df,
-    INPUT_DIR,
+    # normalize_sap_id, 
+    # get_col_from_df,
+    # INPUT_DIR,
     PROJECT_ROOT,
     CACHE_DIR
 )
@@ -41,7 +41,7 @@ def resolve_cmir_types() -> Dict[str, Any]:
         z_so_val_col = get_col_strict(z_df, "so no.", "so no", "so number")
         
         if not z_so_val_col:
-            return {"success": False, "error": f"Cannot find SO Number column in Z-Recon to bridge matches."}
+            return {"success": False, "error": "Cannot find SO Number column in Z-Recon to bridge matches."}
 
         # Identify rows where CMIR Typ is currently blank or 'nan'
         is_cmir_blank = z_df[z_cmir_col].isna() | (z_df[z_cmir_col].astype(str).str.strip().isin(['', 'nan']))

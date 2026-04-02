@@ -1,6 +1,6 @@
 import os
 import pandas as pd  # type: ignore
-from pathlib import Path
+# from pathlib import Path
 
 # Absolute paths
 INPUT_DIR = "/Users/macbook/Downloads/Library/PROJECTS/Randstad/Untitled/POC/Input Files"
@@ -83,7 +83,7 @@ def verify_step2_bridge():
                     if matches <= 5: # Debug first 5
                         print(f"  [SUCCESS] Z-Doc {acc_doc_norm} -> Rev-Ref {invoice_ref} -> SO {final_so}")
     
-    print(f"\n--- Result on 500 rows ---")
+    print("\n--- Result on 500 rows ---")
     print(f"Skips (Starts 1): {skips_starts_1}")
     print(f"Missing SO Initially: {missing_so_count}")
     print(f"Resolved Successfully: {matches}")
