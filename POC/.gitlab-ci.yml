@@ -1,0 +1,45 @@
+# ==========================================
+# ENTERPRISE MULTI-STAGE PIPELINE
+# ==========================================
+stages:
+  - lint
+  - test
+
+# LINT: Backend logic checks (Non-Blocking styling)
+lint:backend:
+  stage: lint
+  image: python:3.11-slim
+  allow_failure: true
+  script:
+    - cd app/backend
+    - pip install flake8
+    - flake8 . --exclude=venv,__pycache__,.pytest_cache --count --select=F,E9,F63,F7,F82 --show-source --statistics
+
+# LINT: Frontend Next.js checks (Non-Blocking styling)
+lint:frontend:
+  stage: lint
+  image: node:18-alpine
+  allow_failure: true
+  script:
+    - cd app/frontend
+    - npm ci
+    - npm run lint -- --max-warnings 0
+
+# TEST: High-Impact Logic Verification (BLOCKING)
+test:logic:backend:
+  stage: test
+  image: python:3.11-slim
+  variables:
+    GROQ_API_KEY: $GROQ_API_KEY
+  script:
+    - cd app/backend
+    - pip install -r requirements.txt
+    - pytest tests/ 
+
+# ==========================================
+# EXCLUSION RULES
+# ==========================================
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == "main"
